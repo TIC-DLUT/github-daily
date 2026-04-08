@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/_components/ui/card'
 import { Badge } from '@/app/_components/ui/badge'
+import { Button } from '@/app/_components/ui/button'
+import { RefreshCw, Mail } from 'lucide-react'
+import { toast } from 'sonner'
 import Link from 'next/link'
 
 const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' }> = {
@@ -49,6 +52,9 @@ interface DigestDetail {
 export function DigestDetailClient({ id }: { id: string }) {
   const [detail, setDetail] = useState<DigestDetail | null>(null)
   const [notFound, setNotFound] = useState(false)
+  const [reanalyzing, setReanalyzing] = useState<Set<string>>(new Set())
+  const [sendingEmail, setSendingEmail] = useState(false)
+  const [previewKey, setPreviewKey] = useState(0)
 
   const fetchDetail = useCallback(async () => {
     try {
@@ -74,6 +80,51 @@ export function DigestDetailClient({ id }: { id: string }) {
     const timer = setInterval(fetchDetail, 2000)
     return () => clearInterval(timer)
   }, [detail, fetchDetail])
+
+  async function handleReanalyze(repoId: string) {
+    setReanalyzing((prev) => new Set(prev).add(repoId))
+    try {
+      const res = await fetch(`/api/digest/${id}/reanalyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repoId }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast.success('重新生成完成')
+        await fetchDetail()
+        setPreviewKey((k) => k + 1)
+      } else {
+        toast.error('重新生成失败', { description: data.error })
+      }
+    } catch {
+      toast.error('网络错误')
+    } finally {
+      setReanalyzing((prev) => {
+        const next = new Set(prev)
+        next.delete(repoId)
+        return next
+      })
+    }
+  }
+
+  async function handleSendEmail() {
+    setSendingEmail(true)
+    try {
+      const res = await fetch(`/api/digest/${id}/resend`, { method: 'POST' })
+      const data = await res.json()
+      if (data.success) {
+        toast.success('邮件发送成功', { description: `已发送 ${data.data.emailsSent} 封` })
+        await fetchDetail()
+      } else {
+        toast.error('发送失败', { description: data.error })
+      }
+    } catch {
+      toast.error('网络错误')
+    } finally {
+      setSendingEmail(false)
+    }
+  }
 
   if (notFound) {
     return (
@@ -102,6 +153,7 @@ export function DigestDetailClient({ id }: { id: string }) {
 
   const languages: string[] = JSON.parse(detail.languages)
   const isRunning = IN_PROGRESS_STATUSES.has(detail.status)
+  const isCompleted = detail.status === 'completed'
 
   return (
     <div className="space-y-6">
@@ -118,16 +170,29 @@ export function DigestDetailClient({ id }: { id: string }) {
             {new Date(detail.startedAt).toLocaleString('zh-CN')}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {isRunning && (
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-warning opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-warning" />
-            </span>
+        <div className="flex items-center gap-3">
+          {isCompleted && !detail.emailSent && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleSendEmail}
+              disabled={sendingEmail}
+            >
+              <Mail className="h-4 w-4" />
+              {sendingEmail ? '发送中...' : '发送邮件'}
+            </Button>
           )}
-          <Badge variant={STATUS_MAP[detail.status]?.variant ?? 'default'} className="text-sm px-3 py-1">
-            {STATUS_MAP[detail.status]?.label ?? detail.status}
-          </Badge>
+          <div className="flex items-center gap-2">
+            {isRunning && (
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-warning opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-warning" />
+              </span>
+            )}
+            <Badge variant={STATUS_MAP[detail.status]?.variant ?? 'default'} className="text-sm px-3 py-1">
+              {STATUS_MAP[detail.status]?.label ?? detail.status}
+            </Badge>
+          </div>
         </div>
       </div>
 
@@ -174,12 +239,13 @@ export function DigestDetailClient({ id }: { id: string }) {
       )}
 
       {/* Email preview */}
-      {detail.status === 'completed' && detail.repos.length > 0 && (
+      {isCompleted && detail.repos.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-lg font-semibold">邮件预览</h2>
           <Card>
             <CardContent className="pt-6">
               <iframe
+                key={previewKey}
                 src={`/api/digest/${id}/preview`}
                 className="w-full h-[600px] rounded-md border border-border"
                 title="邮件预览"
@@ -205,54 +271,105 @@ export function DigestDetailClient({ id }: { id: string }) {
           </p>
         ) : (
           detail.repos.map((item) => (
-            <Card key={item.id}>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">
-                    <a
-                      href={item.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline"
-                    >
-                      {item.author}/{item.name}
-                    </a>
-                  </CardTitle>
-                  <div className="flex items-center gap-2">
-                    {item.language && (
-                      <Badge variant="outline">{item.language}</Badge>
-                    )}
-                    <Badge variant="default">+{item.currentPeriodStars}</Badge>
-                  </div>
-                </div>
-                {item.description && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {item.description}
-                  </p>
-                )}
-                <div className="flex gap-4 text-xs text-muted-foreground mt-2">
-                  <span>Stars: {item.stars.toLocaleString()}</span>
-                  <span>Forks: {item.forks.toLocaleString()}</span>
-                </div>
-              </CardHeader>
-
-              {item.analysis ? (
-                <CardContent className="space-y-3 text-sm">
-                  <AnalysisSection title="简介" content={item.analysis.summary} />
-                  <AnalysisSection title="解决的问题" content={item.analysis.problemSolved} />
-                  <AnalysisSection title="使用场景" content={item.analysis.useCases} />
-                  <AnalysisSection title="目前的不足" content={item.analysis.limitations} />
-                </CardContent>
-              ) : isRunning ? (
-                <CardContent>
-                  <p className="text-sm text-muted-foreground animate-pulse">分析中...</p>
-                </CardContent>
-              ) : null}
-            </Card>
+            <RepoCard
+              key={item.id}
+              item={item}
+              isRunning={isRunning}
+              isReanalyzing={reanalyzing.has(item.id)}
+              onReanalyze={() => handleReanalyze(item.id)}
+            />
           ))
         )}
       </div>
     </div>
+  )
+}
+
+function RepoCard({
+  item,
+  isRunning,
+  isReanalyzing,
+  onReanalyze,
+}: {
+  item: RepoItem
+  isRunning: boolean
+  isReanalyzing: boolean
+  onReanalyze: () => void
+}) {
+  const hasAnalysis = item.analysis && (
+    item.analysis.summary || item.analysis.problemSolved ||
+    item.analysis.useCases || item.analysis.limitations
+  )
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              {item.author}/{item.name}
+            </a>
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {item.language && (
+              <Badge variant="outline">{item.language}</Badge>
+            )}
+            <Badge variant="default">+{item.currentPeriodStars}</Badge>
+          </div>
+        </div>
+        {item.description && (
+          <p className="text-sm text-muted-foreground mt-1">
+            {item.description}
+          </p>
+        )}
+        <div className="flex gap-4 text-xs text-muted-foreground mt-2">
+          <span>Stars: {item.stars.toLocaleString()}</span>
+          <span>Forks: {item.forks.toLocaleString()}</span>
+        </div>
+      </CardHeader>
+
+      {hasAnalysis ? (
+        <CardContent className="space-y-3 text-sm">
+          <AnalysisSection title="简介" content={item.analysis!.summary} />
+          <AnalysisSection title="解决的问题" content={item.analysis!.problemSolved} />
+          <AnalysisSection title="使用场景" content={item.analysis!.useCases} />
+          <AnalysisSection title="目前的不足" content={item.analysis!.limitations} />
+          <div className="pt-1">
+            <button
+              onClick={onReanalyze}
+              disabled={isReanalyzing}
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3 w-3 ${isReanalyzing ? 'animate-spin' : ''}`} />
+              {isReanalyzing ? '重新生成中...' : '重新生成'}
+            </button>
+          </div>
+        </CardContent>
+      ) : isRunning ? (
+        <CardContent>
+          <p className="text-sm text-muted-foreground animate-pulse">分析中...</p>
+        </CardContent>
+      ) : (
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">分析数据为空</p>
+            <button
+              onClick={onReanalyze}
+              disabled={isReanalyzing}
+              className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3 w-3 ${isReanalyzing ? 'animate-spin' : ''}`} />
+              {isReanalyzing ? '生成中...' : '生成分析'}
+            </button>
+          </div>
+        </CardContent>
+      )}
+    </Card>
   )
 }
 

@@ -48,6 +48,14 @@ ${readme}`
       const { content, tokenUsage } = await client.chat(SYSTEM_PROMPT, userMessage)
 
       const analysis = parseAnalysis(content)
+
+      // Auto-retry if critical fields are empty
+      if (isAnalysisIncomplete(analysis) && attempt < MAX_RETRIES - 1) {
+        const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt) * (0.5 + Math.random() * 0.5)
+        await new Promise((resolve) => setTimeout(resolve, delay))
+        continue
+      }
+
       return { ...analysis, tokenUsage }
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error))
@@ -60,6 +68,11 @@ ${readme}`
   }
 
   throw lastError ?? new Error('Analysis failed after retries')
+}
+
+function isAnalysisIncomplete(analysis: RepoAnalysis): boolean {
+  return !analysis.summary || !analysis.problemSolved || !analysis.useCases || !analysis.limitations
+    || analysis.summary === '解析失败'
 }
 
 function parseAnalysis(content: string): RepoAnalysis {

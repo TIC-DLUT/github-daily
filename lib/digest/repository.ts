@@ -141,6 +141,18 @@ export function getAnalysesByRun(digestRunId: string) {
     .all()
 }
 
+export function deleteAnalysisByRepo(trendingRepoId: string) {
+  const db = getDb()
+  db.delete(repoAnalyses)
+    .where(eq(repoAnalyses.trendingRepoId, trendingRepoId))
+    .run()
+}
+
+export function getRepoById(repoId: string) {
+  const db = getDb()
+  return db.select().from(trendingRepos).where(eq(trendingRepos.id, repoId)).get()
+}
+
 // Email log operations
 export function insertEmailLog(
   digestRunId: string,
