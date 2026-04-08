@@ -1,5 +1,5 @@
 import { getDigestRunDetail, getAnalysesByRun } from '@/lib/digest/repository'
-import { getActiveTheme } from '@/lib/digest/theme-repository'
+import { getActiveTemplates } from '@/lib/digest/theme-repository'
 import { renderDigestHtml } from '@/lib/email/templates'
 import type { DigestEmailData } from '@/lib/email/types'
 
@@ -50,8 +50,8 @@ export async function GET(
     }),
   }
 
-  const theme = getActiveTheme()
-  const html = renderDigestHtml(emailData, theme)
+  const { template, contentTemplate } = getActiveTemplates()
+  const html = renderDigestHtml(emailData, template, contentTemplate)
 
   return new Response(html, {
     headers: { 'Content-Type': 'text/html; charset=utf-8' },

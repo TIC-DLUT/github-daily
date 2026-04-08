@@ -24,7 +24,12 @@ export async function POST(req: Request) {
       )
     }
 
-    const id = createTheme(parsed.data.name, parsed.data, body.activate ?? false)
+    const id = createTheme(
+      parsed.data.name,
+      parsed.data.template,
+      parsed.data.contentTemplate,
+      body.activate ?? false
+    )
     return Response.json({ success: true, data: { id } })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -49,7 +54,13 @@ export async function PUT(req: Request) {
       )
     }
 
-    updateTheme(id, parsed.data.name, parsed.data, body.activate ?? false)
+    updateTheme(
+      id,
+      parsed.data.name,
+      parsed.data.template,
+      parsed.data.contentTemplate,
+      body.activate ?? false
+    )
     return Response.json({ success: true, data: { updated: true } })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

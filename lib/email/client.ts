@@ -1,5 +1,5 @@
 import { Resend } from 'resend'
-import type { DigestEmailData, EmailThemeConfig } from './types'
+import type { DigestEmailData } from './types'
 import { renderDigestHtml } from './templates'
 
 interface SendResult {
@@ -14,10 +14,11 @@ export async function sendDigestEmail(
   from: string,
   recipients: string[],
   data: DigestEmailData,
-  theme: EmailThemeConfig
+  template: string,
+  contentTemplate: string
 ): Promise<SendResult[]> {
   const resend = new Resend(apiKey)
-  const html = renderDigestHtml(data, theme)
+  const html = renderDigestHtml(data, template, contentTemplate)
   const subject = `GitHub Trending 日报 - ${data.date}`
 
   const results: SendResult[] = []

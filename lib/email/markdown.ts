@@ -1,64 +1,49 @@
 import type { DigestEmailData } from './types'
+import type { TrendingRepo } from '../scraper/types'
+import type { RepoAnalysis } from '../ai/types'
 
-export function compileDigestMarkdown(data: DigestEmailData): string {
-  const { date, languages, repos } = data
+export function compileDigestMarkdown(
+  data: DigestEmailData,
+  contentTemplate: string
+): string {
+  const sections: string[] = []
 
-  const langLabel = languages.length === 0 || (languages.length === 1 && languages[0] === '')
-    ? '全部语言'
-    : languages.join(', ')
-
-  const lines: string[] = [
-    `# GitHub Trending 日报`,
-    ``,
-    `**日期**：${date} | **语言**：${langLabel} | **项目数**：${repos.length}`,
-    ``,
-    `---`,
-    ``,
-  ]
-
-  for (const { repo, analysis } of repos) {
-    lines.push(`## [${repo.author}/${repo.name}](${repo.url})`)
-    lines.push(``)
-
-    if (repo.description) {
-      lines.push(`> ${repo.description}`)
-      lines.push(``)
-    }
-
-    const meta: string[] = []
-    if (repo.language) meta.push(`**语言**：${repo.language}`)
-    meta.push(`**Stars**：${formatNumber(repo.stars)}`)
-    meta.push(`**今日新增**：+${formatNumber(repo.currentPeriodStars)}`)
-    meta.push(`**Forks**：${formatNumber(repo.forks)}`)
-    lines.push(meta.join(' | '))
-    lines.push(``)
-
-    if (analysis) {
-      lines.push(`### 📋 简介`)
-      lines.push(``)
-      lines.push(analysis.summary)
-      lines.push(``)
-      lines.push(`### 🎯 解决的问题`)
-      lines.push(``)
-      lines.push(analysis.problemSolved)
-      lines.push(``)
-      lines.push(`### 💡 使用场景`)
-      lines.push(``)
-      lines.push(analysis.useCases)
-      lines.push(``)
-      lines.push(`### ⚠️ 目前的不足`)
-      lines.push(``)
-      lines.push(analysis.limitations)
-      lines.push(``)
-    }
-
-    lines.push(`---`)
-    lines.push(``)
+  for (const { repo, analysis } of data.repos) {
+    sections.push(applyContentTemplate(contentTemplate, repo, analysis))
   }
 
-  lines.push(`*由 GitHub Daily 自动生成*`)
+  return sections.join('\n\n')
+}
 
-  return lines.join('\n')
+function applyContentTemplate(
+  template: string,
+  repo: TrendingRepo,
+  analysis: RepoAnalysis | null
+): string {
+  let result = template
+    .replaceAll('{{repo.author}}', repo.author)
+    .replaceAll('{{repo.name}}', repo.name)
+    .replaceAll('{{repo.url}}', repo.url)
+    .replaceAll('{{repo.description}}', repo.description || '')
+    .replaceAll('{{repo.language}}', repo.language || '未知')
+    .replaceAll('{{repo.stars}}', formatNumber(repo.stars))
+    .replaceAll('{{repo.forks}}', formatNumber(repo.forks))
+    .replaceAll('{{repo.currentPeriodStars}}', formatNumber(repo.currentPeriodStars))
+
+  // Handle {{#analysis}}...{{/analysis}} conditional block
+  if (analysis) {
+    result = result
+      .replace(/\{\{#analysis\}\}\n?/, '')
+      .replace(/\n?\{\{\/analysis\}\}/, '')
+      .replaceAll('{{analysis.summary}}', analysis.summary)
+      .replaceAll('{{analysis.problemSolved}}', analysis.problemSolved)
+      .replaceAll('{{analysis.useCases}}', analysis.useCases)
+      .replaceAll('{{analysis.limitations}}', analysis.limitations)
+  } else {
+    result = result.replace(/\{\{#analysis\}\}[\s\S]*?\{\{\/analysis\}\}/, '')
+  }
+
+  return result
 }
 
 function formatNumber(n: number): string {

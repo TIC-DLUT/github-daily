@@ -2,7 +2,7 @@ import { getDigestRunDetail, getAnalysesByRun } from '@/lib/digest/repository'
 import { getSetting, getSettingParsed } from '@/lib/settings/repository'
 import { sendDigestEmail } from '@/lib/email/client'
 import { insertEmailLog } from '@/lib/digest/repository'
-import { getActiveTheme } from '@/lib/digest/theme-repository'
+import { getActiveTemplates } from '@/lib/digest/theme-repository'
 import type { DigestEmailData } from '@/lib/email/types'
 
 export const dynamic = 'force-dynamic'
@@ -62,8 +62,8 @@ export async function POST(
     }),
   }
 
-  const theme = getActiveTheme()
-  const results = await sendDigestEmail(resendApiKey, emailFrom, recipients, emailData, theme)
+  const { template, contentTemplate } = getActiveTemplates()
+  const results = await sendDigestEmail(resendApiKey, emailFrom, recipients, emailData, template, contentTemplate)
 
   let emailsSent = 0
   for (const result of results) {

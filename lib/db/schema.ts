@@ -70,18 +70,13 @@ export const emailLogs = sqliteTable('email_logs', {
   error: text('error'),
 })
 
-// Email themes: theme presets
+// Email themes: template presets
 export const emailThemes = sqliteTable('email_themes', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   isActive: integer('is_active').notNull().default(0), // boolean 0/1
-  primaryColor: text('primary_color').notNull(),
-  bgColor: text('bg_color').notNull(),
-  textColor: text('text_color').notNull(),
-  accentColor: text('accent_color').notNull(),
-  fontFamily: text('font_family').notNull(),
-  layout: text('layout', { enum: ['compact', 'expanded', 'magazine'] }).notNull(),
-  customCss: text('custom_css'),
+  template: text('template').notNull(),
+  contentTemplate: text('content_template'),
   createdAt: integer('created_at', { mode: 'number' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
 })

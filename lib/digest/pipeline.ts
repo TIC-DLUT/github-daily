@@ -15,8 +15,8 @@ import {
 } from './repository'
 import type { AiConfig, RepoAnalysis } from '../ai/types'
 import type { TrendingRepo } from '../scraper/types'
-import type { DigestEmailData, EmailThemeConfig } from '../email/types'
-import { getActiveTheme } from './theme-repository'
+import type { DigestEmailData } from '../email/types'
+import { getActiveTemplates } from './theme-repository'
 
 interface PipelineOptions {
   skipEmail?: boolean
@@ -156,8 +156,8 @@ async function executePipeline(runId: string, languages: string[], options: Pipe
         }),
       }
 
-      const theme = getActiveTheme()
-      const results = await sendDigestEmail(resendApiKey, emailFrom, recipients, emailData, theme)
+      const { template, contentTemplate } = getActiveTemplates()
+      const results = await sendDigestEmail(resendApiKey, emailFrom, recipients, emailData, template, contentTemplate)
 
       let emailsSent = 0
       for (const result of results) {
