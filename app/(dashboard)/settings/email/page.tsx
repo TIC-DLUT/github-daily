@@ -5,11 +5,9 @@ import { Card, CardContent } from '@/app/_components/ui/card'
 import { Input } from '@/app/_components/ui/input'
 import { Button } from '@/app/_components/ui/button'
 import { toast } from 'sonner'
-import { X, Plus } from 'lucide-react'
 
 export default function EmailConfigPage() {
   const [recipients, setRecipients] = useState<string[]>([])
-  const [newEmail, setNewEmail] = useState('')
   const [emailFrom, setEmailFrom] = useState('GitHub Daily <noreply@resend.dev>')
   const [resendKey, setResendKey] = useState('')
   const [saving, setSaving] = useState(false)
@@ -26,28 +24,15 @@ export default function EmailConfigPage() {
       })
   }, [])
 
-  function addRecipient() {
-    const email = newEmail.trim()
-    if (!email) return
-    if (recipients.includes(email)) {
-      toast.error('该邮箱已在列表中')
-      return
-    }
-    setRecipients([...recipients, email])
-    setNewEmail('')
-  }
-
-  function removeRecipient(email: string) {
-    setRecipients(recipients.filter((r) => r !== email))
-  }
-
   async function handleSave() {
     setSaving(true)
     try {
+      const cleaned = [...new Set(recipients.map((r) => r.trim()).filter(Boolean))]
+      setRecipients(cleaned)
       await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'email_recipients', value: JSON.stringify(recipients) }),
+        body: JSON.stringify({ key: 'email_recipients', value: JSON.stringify(cleaned) }),
       })
       await fetch('/api/settings', {
         method: 'PUT',
@@ -90,41 +75,31 @@ export default function EmailConfigPage() {
         />
 
         <div>
-          <p className="text-sm font-medium mb-2">收件人列表</p>
-          <div className="flex gap-2 mb-3">
-            <Input
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              placeholder="输入邮箱地址"
-              onKeyDown={(e) => e.key === 'Enter' && addRecipient()}
-              className="flex-1"
-            />
-            <Button variant="secondary" onClick={addRecipient} size="md">
-              <Plus className="h-4 w-4" />
-              添加
-            </Button>
-          </div>
-
-          {recipients.length === 0 ? (
-            <p className="text-sm text-muted-foreground">暂无收件人</p>
-          ) : (
-            <div className="space-y-2">
-              {recipients.map((email) => (
-                <div
-                  key={email}
-                  className="flex items-center justify-between rounded-md border border-border px-3 py-2"
-                >
-                  <span className="text-sm">{email}</span>
-                  <button
-                    onClick={() => removeRecipient(email)}
-                    className="text-muted-foreground hover:text-destructive transition-colors"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          <p className="text-sm font-medium mb-1">收件人列表</p>
+          <p className="text-xs text-muted-foreground mb-2">每行一个邮箱地址</p>
+          <textarea
+            value={recipients.join('\n')}
+            onChange={(e) => {
+              const lines = e.target.value.split('\n')
+              setRecipients(lines)
+            }}
+            onBlur={() => {
+              // Clean up on blur: trim, remove empty lines, deduplicate
+              const cleaned = [...new Set(
+                recipients
+                  .map((r) => r.trim())
+                  .filter(Boolean)
+              )]
+              setRecipients(cleaned)
+            }}
+            rows={6}
+            spellCheck={false}
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 resize-none"
+            placeholder={"user1@example.com\nuser2@example.com"}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            当前 {recipients.filter((r) => r.trim()).length} 个收件人
+          </p>
         </div>
 
         <div className="flex justify-end">
