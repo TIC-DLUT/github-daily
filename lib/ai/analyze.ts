@@ -75,33 +75,107 @@ function isAnalysisIncomplete(analysis: RepoAnalysis): boolean {
     || analysis.summary === '解析失败'
 }
 
-function parseAnalysis(content: string): RepoAnalysis {
-  // Try to extract JSON from the response
-  const jsonMatch = content.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) {
-    return {
-      summary: content.slice(0, 200),
-      problemSolved: '解析失败',
-      useCases: '解析失败',
-      limitations: '解析失败',
+function stripMarkdownCodeFence(content: string): string {
+  const fenceMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)```/)
+  return fenceMatch ? fenceMatch[1].trim() : content
+}
+
+// Escape literal newlines/tabs inside JSON string values so JSON.parse succeeds
+function sanitizeJsonNewlines(raw: string): string {
+  let result = ''
+  let inString = false
+  let escaped = false
+
+  for (const char of raw) {
+    if (escaped) {
+      result += char
+      escaped = false
+      continue
     }
+    if (char === '\\' && inString) {
+      result += char
+      escaped = true
+      continue
+    }
+    if (char === '"') {
+      inString = !inString
+      result += char
+      continue
+    }
+    if (inString) {
+      if (char === '\n') { result += '\\n'; continue }
+      if (char === '\r') { result += '\\r'; continue }
+      if (char === '\t') { result += '\\t'; continue }
+    }
+    result += char
   }
 
+  return result
+}
+
+function tryParseJson(text: string): Record<string, unknown> | null {
+  const jsonMatch = text.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) return null
+
   try {
-    const parsed = JSON.parse(jsonMatch[0])
+    return JSON.parse(jsonMatch[0])
+  } catch {
+    // Fallback: fix unescaped newlines inside string values
+    try {
+      return JSON.parse(sanitizeJsonNewlines(jsonMatch[0]))
+    } catch {
+      return null
+    }
+  }
+}
+
+// Last-resort: extract fields individually via regex (handles truncated/malformed JSON)
+function regexExtractFields(content: string): RepoAnalysis | null {
+  const extract = (field: string): string => {
+    // Match "field": "value" — value may span lines and contain escaped quotes
+    const match = content.match(new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\[\\s\\S]|\\n)*?)"`))
+    if (!match) return ''
+    return match[1]
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\')
+  }
+
+  const summary = extract('summary')
+  if (!summary) return null
+
+  return {
+    summary,
+    problemSolved: extract('problemSolved') || '解析失败',
+    useCases: extract('useCases') || '解析失败',
+    limitations: extract('limitations') || '解析失败',
+  }
+}
+
+function parseAnalysis(content: string): RepoAnalysis {
+  const stripped = stripMarkdownCodeFence(content)
+
+  // 1. Try standard JSON.parse (with sanitize fallback)
+  const parsed = tryParseJson(stripped)
+  if (parsed) {
     return {
       summary: String(parsed.summary || ''),
       problemSolved: String(parsed.problemSolved || ''),
       useCases: String(parsed.useCases || ''),
       limitations: String(parsed.limitations || ''),
     }
-  } catch {
-    return {
-      summary: content.slice(0, 200),
-      problemSolved: '解析失败',
-      useCases: '解析失败',
-      limitations: '解析失败',
-    }
+  }
+
+  // 2. Try regex field extraction (handles truncated/malformed JSON)
+  const regexResult = regexExtractFields(stripped)
+  if (regexResult) return regexResult
+
+  return {
+    summary: content.slice(0, 200),
+    problemSolved: '解析失败',
+    useCases: '解析失败',
+    limitations: '解析失败',
   }
 }
 
