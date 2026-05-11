@@ -1,4 +1,4 @@
-import { eq, desc } from 'drizzle-orm'
+import { eq, desc, like, or, sql } from 'drizzle-orm'
 import { getDb } from '../db'
 import {
   digestRuns,
@@ -67,6 +67,57 @@ export function countDigestRuns() {
   const result = db
     .select({ count: digestRuns.id })
     .from(digestRuns)
+    .all()
+  return result.length
+}
+
+export function searchDigestRunsByRepo(query: string, limit = 20, offset = 0) {
+  const db = getDb()
+  const pattern = `%${query}%`
+
+  const matchingRepos = db
+    .select({
+      digestRunId: trendingRepos.digestRunId,
+      author: trendingRepos.author,
+      name: trendingRepos.name,
+    })
+    .from(trendingRepos)
+    .where(or(like(trendingRepos.name, pattern), like(trendingRepos.author, pattern)))
+    .all()
+
+  const reposByRun = new Map<string, string[]>()
+  for (const r of matchingRepos) {
+    const fullName = `${r.author}/${r.name}`
+    const list = reposByRun.get(r.digestRunId) ?? []
+    if (!list.includes(fullName)) list.push(fullName)
+    reposByRun.set(r.digestRunId, list)
+  }
+
+  const runIds = [...reposByRun.keys()]
+  if (runIds.length === 0) return []
+
+  const runs = db
+    .select()
+    .from(digestRuns)
+    .where(sql`${digestRuns.id} IN (${sql.join(runIds.map(id => sql`${id}`), sql`,`)})`)
+    .orderBy(desc(digestRuns.startedAt))
+    .limit(limit)
+    .offset(offset)
+    .all()
+
+  return runs.map((run) => ({
+    ...run,
+    matchedRepos: reposByRun.get(run.id) ?? [],
+  }))
+}
+
+export function countDigestRunsByRepo(query: string) {
+  const db = getDb()
+  const pattern = `%${query}%`
+  const result = db
+    .selectDistinct({ id: trendingRepos.digestRunId })
+    .from(trendingRepos)
+    .where(or(like(trendingRepos.name, pattern), like(trendingRepos.author, pattern)))
     .all()
   return result.length
 }
