@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/_components/ui/card'
 import { Badge } from '@/app/_components/ui/badge'
 import { Button } from '@/app/_components/ui/button'
-import { RefreshCw, Mail } from 'lucide-react'
+import { RefreshCw, Mail, Send } from 'lucide-react'
+import { Dialog, DialogHeader, DialogTitle, DialogFooter } from '@/app/_components/ui/dialog'
 import { toast } from 'sonner'
 import Link from 'next/link'
 
@@ -55,6 +56,10 @@ export function DigestDetailClient({ id }: { id: string }) {
   const [reanalyzing, setReanalyzing] = useState<Set<string>>(new Set())
   const [sendingEmail, setSendingEmail] = useState(false)
   const [previewKey, setPreviewKey] = useState(0)
+  const [sendDialogOpen, setSendDialogOpen] = useState(false)
+  const [allRecipients, setAllRecipients] = useState<string[]>([])
+  const [selectedRecipients, setSelectedRecipients] = useState<Set<string>>(new Set())
+  const [sendingToSelected, setSendingToSelected] = useState(false)
 
   const fetchDetail = useCallback(async () => {
     try {
@@ -126,6 +131,60 @@ export function DigestDetailClient({ id }: { id: string }) {
     }
   }
 
+  async function handleOpenSendDialog() {
+    setSendDialogOpen(true)
+    try {
+      const res = await fetch('/api/settings')
+      const data = await res.json()
+      if (data.success && data.data.email_recipients) {
+        const list: string[] = JSON.parse(data.data.email_recipients)
+        setAllRecipients(list)
+        setSelectedRecipients(new Set(list))
+      }
+    } catch {
+      toast.error('获取收件人列表失败')
+    }
+  }
+
+  function handleToggleRecipient(email: string) {
+    setSelectedRecipients((prev) => {
+      const next = new Set(prev)
+      if (next.has(email)) {
+        next.delete(email)
+      } else {
+        next.add(email)
+      }
+      return next
+    })
+  }
+
+  async function handleSendToSelected() {
+    if (selectedRecipients.size === 0) {
+      toast.error('请至少选择一个收件人')
+      return
+    }
+    setSendingToSelected(true)
+    try {
+      const res = await fetch(`/api/digest/${id}/send-single`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipients: Array.from(selectedRecipients) }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast.success('邮件发送成功', { description: `已发送 ${data.data.emailsSent} 封` })
+        setSendDialogOpen(false)
+        await fetchDetail()
+      } else {
+        toast.error('发送失败', { description: data.error })
+      }
+    } catch {
+      toast.error('网络错误')
+    } finally {
+      setSendingToSelected(false)
+    }
+  }
+
   if (notFound) {
     return (
       <div className="text-center py-16">
@@ -171,6 +230,16 @@ export function DigestDetailClient({ id }: { id: string }) {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {isCompleted && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleOpenSendDialog}
+            >
+              <Send className="h-4 w-4" />
+              发送给个人
+            </Button>
+          )}
           {isCompleted && !detail.emailSent && (
             <Button
               variant="secondary"
@@ -179,7 +248,7 @@ export function DigestDetailClient({ id }: { id: string }) {
               disabled={sendingEmail}
             >
               <Mail className="h-4 w-4" />
-              {sendingEmail ? '发送中...' : '发送邮件'}
+              {sendingEmail ? '发送中...' : '发送全部'}
             </Button>
           )}
           <div className="flex items-center gap-2">
@@ -281,6 +350,42 @@ export function DigestDetailClient({ id }: { id: string }) {
           ))
         )}
       </div>
+
+      <Dialog open={sendDialogOpen} onClose={() => setSendDialogOpen(false)}>
+        <DialogHeader>
+          <DialogTitle>选择收件人</DialogTitle>
+        </DialogHeader>
+        {allRecipients.length === 0 ? (
+          <p className="text-sm text-muted-foreground">暂无已配置的收件人</p>
+        ) : (
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {allRecipients.map((email) => (
+              <label key={email} className="flex items-center gap-2 cursor-pointer rounded-md px-2 py-1.5 hover:bg-muted">
+                <input
+                  type="checkbox"
+                  checked={selectedRecipients.has(email)}
+                  onChange={() => handleToggleRecipient(email)}
+                  className="h-4 w-4 rounded border-border"
+                />
+                <span className="text-sm">{email}</span>
+              </label>
+            ))}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" size="sm" onClick={() => setSendDialogOpen(false)}>
+            取消
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleSendToSelected}
+            disabled={sendingToSelected || selectedRecipients.size === 0}
+          >
+            <Send className="h-4 w-4" />
+            {sendingToSelected ? '发送中...' : `发送 (${selectedRecipients.size})`}
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   )
 }
